@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# venv
+.venv/
+env/
+venv/
+
+# Results & logs
+result/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets (不要把金鑰寫檔案，但以防萬一)
+.env
