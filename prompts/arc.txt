@@ -1,0 +1,6 @@
+You are given several training input/output grid pairs that follow a single hidden rule.
+Digits 0–9 denote colors with no numeric meaning.
+IMPORTANT:
+• The TEST output may have different size than input (e.g., scaling, tiling, framing).
+• Do NOT simply copy the input.
+Task: Apply the rule and return ONLY the output grid as JSON per schema.

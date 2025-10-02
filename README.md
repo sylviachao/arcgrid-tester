@@ -1,28 +1,46 @@
-# ARC-AGI-v2 Interactive Tester
+# ARC-AGI-v2 Interactive Tester (with Auto-Detect for Grids & Images)
 
-This project builds an interactive solver–evaluator–teacher loop for ARC-AGI-v2 style puzzles.  
-The script reads challenge tasks and (optionally) solutions, generates candidate outputs with the OpenAI API, applies sanity checks (no copying input / no downsizing), and logs per-ID results.  
+This project builds an **interactive solver–evaluator–teacher loop** for ARC-AGI-v2 style puzzles.  
+It now supports **both JSON grids and image-based inputs/outputs** with automatic detection, making it easier to run experiments even when your dataset mixes formats.  
+The script uses the OpenAI Responses API to generate candidate outputs, applies sanity checks (no copying input / no downsizing), collects timing and token stats, and logs per-puzzle results.  
 It supports running a limited number of puzzles and saves outputs to a timestamped result file.  
-Sample evaluation data is included in `data/evaluation`.
+Optional rendering produces images of predicted grids.
+
+---
 
 ## Features
 
-- **Flexible output size**: JSON schema allows outputs larger than input (configurable multiplier).  
-- **Hint loop**: simple teacher provides targeted hints between rounds.  
-- **Dual-file support**: reads `arc-agi_evaluation_challenges.json` + `arc-agi_evaluation_solutions.json` (optional).  
-- **Batch control**: `--limit` runs only the first N puzzle IDs safely (`min(limit, total)`).  
-- **Structured logs**: results saved to `result/result_YYYYMMDD_HHMMSS.txt`.
+- **Auto-detect grids vs. images**:  
+  - Train input/output can be JSON grids or image filenames.  
+  - Test input can be a grid or image filename.  
+  - If image, the script quantizes it to 0–9 indexed colors (10 fixed-color palette).  
+- **Flexible I/O modes** (`--io-mode` as hint, auto-detect still works):  
+  - `grid2grid`: JSON grid → grid (default).  
+  - `img2grid`: Image → grid → grid (logs grids).  
+  - `img2grid2img`: Image → grid → grid → image (renders predictions to PNG).  
+- **Flexible output size**: Schema allows outputs larger than input (up to `MAX_EXPAND` multiplier).  
+- **Hint loop**: Simple teacher provides targeted hints between rounds.  
+- **Sanity checks**: Rejects outputs smaller than input or exact copies of input.  
+- **Stats collection**: Records time and tokens per round, per puzzle, and averages across all.  
+- **Pretty grid printouts**: Outputs prediction grids as neat rectangles.  
+- **Structured logs**: Results saved to `result/result_YYYYMMDD_HHMMSS.txt`.  
+- **Optional rendering**: With `--io-mode img2grid2img`, saves predicted grids as PNG images.  
+
+---
 
 ## Requirements
 
 - Python 3.8+  
-- `openai>=1.30.0`  
+- Packages:  
+  - `openai>=1.30.0`  
+  - `pillow` (for image I/O)  
+  - `numpy` (for image quantization)  
 - An OpenAI API key (`OPENAI_API_KEY`)
 
-## Installation
+### Install
 
 ```bash
-pip install "openai>=1.30.0"
+pip install "openai>=1.30.0" pillow numpy
 ```
 
 Set API key:
@@ -37,90 +55,122 @@ Set API key:
   ```
   *(Open a NEW PowerShell window so the env var takes effect.)*
 
+---
+
 ## Data Formats
 
 ### Challenges (IDs at top level)
 
+Grids (classic ARC style):
+
 ```json
 {
-  "00576224": {
-    "train": [ { "input": [[...]], "output": [[...]] }, ... ],
-    "test":  [ { "input": [[...]] } ]
-  },
-  "007bbfb7": { ... }
+  "PUZ001": {
+    "train": [ { "input": [[0,0],[1,1]], "output": [[1,1],[0,0]] } ],
+    "test":  [ { "input": [[0,1],[1,0]] } ]
+  }
+}
+```
+
+Images (filenames instead of raw grids):
+
+```json
+{
+  "PUZ001": {
+    "train": [ { "input": "PUZ001_in.png", "output": "PUZ001_out.png" } ],
+    "test":  [ { "input": "PUZ001_test.png" } ]
+  }
 }
 ```
 
 ### Solutions (optional)
 
-Common case (list of grids, first is the gold output):
+- Grids:
 
 ```json
 {
-  "00576224": [ [[...], [...]] ],
-  "007bbfb7": [ [[...], [...]] ]
+  "PUZ001": [ [[1,0],[0,1]] ]
 }
 ```
 
-If your solutions file wraps keys (e.g., `{ "solutions": { ... } }`) or stores a single grid directly (not in a list), adjust the loader accordingly (the provided script is easy to extend to auto-detect).
+- Or image filenames:
+
+```json
+{
+  "PUZ001": [ "PUZ001_solution.png" ]
+}
+```
+
+---
 
 ## Usage
 
-Script: `arc_interactive_test.py`
+Script: `interactive_tester.py`
 
-### PowerShell example
-
-```powershell
-python arc_interactive_test.py `
-  --data arctest2025/data/evaluation/arc-agi_evaluation_challenges.json `
-  --solutions arctest2025/data/evaluation/arc-agi_evaluation_solutions.json `
-  --model gpt-4o-2024-08-06 `
-  --rounds 3 `
-  --limit 5 `
-  --verbose
-```
-
-### Bash example
+### Example: grid → grid
 
 ```bash
-python arc_interactive_test.py   --data arctest2025/data/evaluation/arc-agi_evaluation_challenges.json   --solutions arctest2025/data/evaluation/arc-agi_evaluation_solutions.json   --model gpt-4o-2024-08-06   --rounds 3   --limit 5   --verbose
+python interactive_tester.py   --data data/arc_challenges.json   --solutions data/arc_solutions.json   --prompt arc.txt   --model gpt-4o-2024-08-06   --io-mode grid2grid   --rounds 3   --limit 5
 ```
+
+### Example: image → grid → grid
+
+```bash
+python interactive_tester.py   --data data/arc_challenges.json   --prompt arc.txt   --io-mode img2grid   --image-dir images/   --limit 3
+```
+
+### Example: image → grid → grid → image (renders predictions)
+
+```bash
+python interactive_tester.py   --data data/arc_challenges.json   --prompt arc.txt   --io-mode img2grid2img   --image-dir images/   --render-scale 16   --limit 2
+```
+
+---
 
 ## Key CLI Options
 
 - `--data` (required): path to challenges JSON.  
 - `--solutions` (optional): path to solutions JSON for scoring.  
+- `--prompt` (required): template filename under `./prompts` (e.g., `arc.txt`).  
+- `--model`: OpenAI model ID (default: `gpt-4o-2024-08-06`).  
 - `--rounds`: max interactive rounds per puzzle (default 5).  
 - `--k`: candidates per round (default 1). Increase for self-consistency.  
 - `--temperature`, `--top_p`: sampling controls.  
-- `--limit`: number of puzzle IDs to evaluate (default 10, capped by available IDs).  
-- `--verbose`: print raw JSON outputs for debugging.  
+- `--limit`: number of puzzle IDs to evaluate (default 10).  
+- `--io-mode`: preferred I/O mode (grid2grid/img2grid/img2grid2img).  
+- `--image-dir`: directory containing puzzle images (if JSON references PNG/JPG).  
+- `--render-scale`: pixel scale when rendering predictions to PNG (default 16).  
+- `--verbose`: print extra debug logs.  
+
+---
 
 ## Output
 
-Results saved under `result/result_YYYYMMDD_HHMMSS.txt`.
+- Results saved to `result/result_YYYYMMDD_HHMMSS.txt`.  
+- With `--io-mode img2grid2img`, rendered outputs saved under `result/renders_YYYYMMDD_HHMMSS/`.
 
 Each puzzle section includes:
-- Model & rounds  
-- Per-round status (accuracy if gold is present; otherwise “prediction accepted (no gold)”)  
-- Hints used between rounds  
-- Best accuracy (with gold) and the best predicted grid  
+- Puzzle ID & model  
+- Per-round results (accuracy, time, tokens, hints)  
+- Best accuracy & best prediction grid (rectangle print)  
+- Puzzle-level stats (time, tokens, rounds used)  
 
-## Improving Accuracy (Tips)
+Final section shows totals and averages across all puzzles.
 
-- Increase `--k` (e.g., 5–10) to sample more candidates per round and pick the best.  
-- Extend the teacher to check for tiling/scale factors, rotations/reflections, color remapping, border framing.  
-- Add task-specific reminders to the prompt if needed.  
+---
 
 ## Project Structure
 
 ```
-arctest2025/
-└─ data/
-   └─ evaluation/
-      ├─ arc-agi_evaluation_challenges.json
-      └─ arc-agi_evaluation_solutions.json
-arc_interactive_test.py
-result/
-README.md
+project/
+├─ interactive_tester.py
+├─ prompts/
+│  └─ arc.txt
+├─ data/
+│  ├─ arc_challenges.json
+│  └─ arc_solutions.json
+├─ images/                # if JSON references image files
+└─ result/
+   ├─ result_20250929_153022.txt
+   └─ renders_20250929_153022/
 ```
